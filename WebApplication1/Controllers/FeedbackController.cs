@@ -26,16 +26,18 @@ namespace TechDesk.Controllers
             if (dto.Nota < 1 || dto.Nota > 5)
                 return BadRequest("A nota deve ser entre 1 e 5.");
 
-            var chamado = await _context.Chamados.FirstOrDefaultAsync(c => c.IdChamado == chamadoId);
+            var chamado = await _context.Chamados
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.IdChamado == chamadoId);
+
             if (chamado == null)
                 return NotFound($"Chamado com ID {chamadoId} não encontrado.");
 
-            // Criação do feedback
             var feedback = new FeedbackAtendimento
             {
                 IdChamado = chamadoId,
                 UsuarioId = dto.UsuarioId,
-                Nota = (byte)dto.Nota, // 🔥 Conversão explícita: int → byte
+                Nota = (byte)dto.Nota,
                 Comentario = dto.Comentario,
                 Data = DateTime.UtcNow
             };
@@ -43,8 +45,9 @@ namespace TechDesk.Controllers
             _context.FeedbackAtendimentos.Add(feedback);
             await _context.SaveChangesAsync();
 
-            // Busca o nome do usuário (opcional)
-            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.Id == dto.UsuarioId);
+            var usuario = await _context.Usuarios
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == dto.UsuarioId);
 
             var response = new FeedbackDTO
             {
@@ -57,16 +60,19 @@ namespace TechDesk.Controllers
                 NomeUsuario = usuario?.Nome
             };
 
-            return CreatedAtAction(nameof(ObterFeedbackPorChamado), new { chamadoId = feedback.IdChamado }, response);
+            return CreatedAtAction(nameof(ObterFeedbackPorChamado),
+                new { chamadoId = feedback.IdChamado },
+                response);
         }
 
-        // ✅ GET - Listar feedback(s) de um chamado
+        // ✅ GET - Listar feedbacks de um chamado
         [HttpGet("{chamadoId:int}")]
         public async Task<IActionResult> ObterFeedbackPorChamado(int chamadoId)
         {
             var lista = await _context.FeedbackAtendimentos
+                .AsNoTracking()
                 .Where(f => f.IdChamado == chamadoId)
-                .Include(f => f.Usuario) // inclui dados do usuário (JOIN)
+                .Include(f => f.Usuario)
                 .Select(f => new FeedbackDTO
                 {
                     Id = f.Id,

@@ -27,23 +27,52 @@ namespace TechDesk.Controllers
             if (!chamadoExiste)
                 return NotFound($"Chamado com ID {chamadoId} não encontrado.");
 
+            // 🔒 Garante valores válidos conforme o banco
+            string[] statusValidos = { "Aberto", "EmAndamento", "AguardandoCliente", "Fechado" };
+
             var novaMensagem = new HistoricoChamado
             {
                 IdChamado = chamadoId,
-                AutorTipo = dto.AutorTipo ?? "Usuario",
+                AutorTipo = dto.AutorTipo switch
+                {
+                    "Usuario" or "Tecnico" or "Sistema" => dto.AutorTipo,
+                    _ => "Usuario"
+                },
                 AutorUsuarioId = dto.AutorUsuarioId,
                 AutorTecnicoId = dto.AutorTecnicoId,
                 Mensagem = dto.Mensagem,
-                Visibilidade = dto.Visibilidade ?? "Externo",
-                StatusAntes = dto.StatusAntes,
-                StatusDepois = dto.StatusDepois,
+                Visibilidade = dto.Visibilidade == "Interno" || dto.Visibilidade == "Externo"
+                    ? dto.Visibilidade
+                    : "Externo",
+                StatusAntes = statusValidos.Contains(dto.StatusAntes) ? dto.StatusAntes : "Aberto",
+                StatusDepois = statusValidos.Contains(dto.StatusDepois) ? dto.StatusDepois : "EmAndamento",
                 Data = DateTime.UtcNow
             };
 
             _context.HistoricoChamados.Add(novaMensagem);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(ListarMensagensPorChamado), new { chamadoId = novaMensagem.IdChamado }, novaMensagem);
+            // ✅ Se tiver anexo, cria o registro em AnexosMensagem
+            if (!string.IsNullOrEmpty(dto.NomeArquivo))
+            {
+                var anexo = new AnexosMensagem
+                {
+                    IdMensagem = novaMensagem.Id,
+                    NomeArquivo = dto.NomeArquivo,
+                    Url = dto.Url ?? string.Empty,
+                    Descricao = dto.DescricaoAnexo ?? string.Empty,
+                    ContentType = dto.ContentType ?? "application/octet-stream",
+                    TamanhoBytes = dto.TamanhoBytes > 0 ? dto.TamanhoBytes : 0,
+                    DataUpload = DateTime.UtcNow
+                };
+
+                _context.AnexosMensagems.Add(anexo);
+                await _context.SaveChangesAsync();
+            }
+
+            return CreatedAtAction(nameof(ListarMensagensPorChamado),
+                new { chamadoId = novaMensagem.IdChamado },
+                novaMensagem);
         }
 
         // ✅ PUT /api/Mensagem/{mensagemId}
@@ -69,7 +98,7 @@ namespace TechDesk.Controllers
                 .Where(h => h.IdChamado == chamadoId)
                 .Include(h => h.AutorUsuario)
                 .Include(h => h.AutorTecnico)
-                .Include(h => h.AnexosMensagems) // 👈 pega os anexos ligados a essa mensagem
+                .Include(h => h.AnexosMensagems)
                 .OrderBy(h => h.Data)
                 .Select(h => new
                 {

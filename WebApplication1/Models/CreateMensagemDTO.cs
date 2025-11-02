@@ -9,5 +9,11 @@
         public string? Visibilidade { get; set; }
         public string? StatusAntes { get; set; }
         public string? StatusDepois { get; set; }
+
+        public string? NomeArquivo { get; set; }
+        public string? Url { get; set; }
+        public string? DescricaoAnexo { get; set; }
+        public string? ContentType { get; set; }
+        public long? TamanhoBytes { get; set; }
     }
 }

@@ -1,9 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
-namespace TechDesk.Models;
-
-public partial class VwTma
+namespace TechDesk.Models
 {
-    public int? TempoMedioMin { get; set; }
+    [Table("vw_TMA", Schema = "TechDesk")]
+    public class VwTma
+    {
+        public double? TempoMedioMin { get; set; }
+        public int? TotalChamados { get; set; }
+        public DateTime? Data { get; set; }
+    }
 }

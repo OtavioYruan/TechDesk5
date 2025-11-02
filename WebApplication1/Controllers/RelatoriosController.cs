@@ -17,7 +17,6 @@ namespace TechDesk.Controllers
         }
 
         // ==================== RELATÓRIO GERAL ====================
-        // GET /relatorios/visao-geral?inicio=2025-01-01&fim=2025-12-31
         [HttpGet("visao-geral")]
         public async Task<IActionResult> VisaoGeral([FromQuery] DateTime? inicio, [FromQuery] DateTime? fim)
         {
@@ -36,48 +35,46 @@ namespace TechDesk.Controllers
                 ? await _context.FeedbackAtendimentos.AverageAsync(f => f.Nota)
                 : 0;
 
-            var resultado = new
+            return Ok(new
             {
                 Periodo = $"{inicio?.ToShortDateString()} - {fim?.ToShortDateString()}",
                 TotalChamados = total,
                 Abertos = abertos,
                 Fechados = fechados,
                 MediaSatisfacao = Math.Round(mediaNota, 2)
-            };
-
-            return Ok(resultado);
+            });
         }
 
-        // ==================== DESEMPENHO DOS TÉCNICOS ====================
-        // GET /relatorios/desempenho-tecnicos?inicio=2025-01-01&fim=2025-12-31
         [HttpGet("desempenho-tecnicos")]
         public async Task<IActionResult> DesempenhoTecnicos([FromQuery] DateTime? inicio, [FromQuery] DateTime? fim)
         {
+            // Carrega técnicos e seus chamados do banco
             var tecnicos = await _context.Tecnicos
                 .Include(t => t.Chamados)
-                .Select(t => new
-                {
-                    t.Nome,
-                    ChamadosResolvidos = t.Chamados.Count(c => c.Status == "Fechado"),
-                    TempoMedioHoras = t.Chamados
-                        .Where(c => c.DataFinal != null)
-                        .Select(c => EF.Functions.DateDiffMinute(c.DataInicio, c.DataFinal.Value) / 60.0)
-                        .DefaultIfEmpty(0)
-                        .Average()
-                })
                 .ToListAsync();
+
+            // Processa em memória para evitar erro de tradução do EF
+            var resultadoTecnicos = tecnicos.Select(t => new
+            {
+                t.Nome,
+                ChamadosResolvidos = t.Chamados.Count(c => c.Status == "Fechado"),
+                TempoMedioHoras = t.Chamados
+                    .Where(c => c.Status == "Fechado" && c.DataFinal != null)
+                    .Select(c => (c.DataFinal.Value - c.DataInicio).TotalHours)
+                    .DefaultIfEmpty(0)
+                    .Average()
+            });
 
             var resultado = new
             {
                 Periodo = $"{inicio?.ToShortDateString()} - {fim?.ToShortDateString()}",
-                Tecnicos = tecnicos
+                Tecnicos = resultadoTecnicos
             };
 
             return Ok(resultado);
         }
 
         // ==================== SATISFAÇÃO DOS CLIENTES ====================
-        // GET /relatorios/satisfacao-clientes?inicio=2025-01-01&fim=2025-12-31
         [HttpGet("satisfacao-clientes")]
         public async Task<IActionResult> SatisfacaoClientes([FromQuery] DateTime? inicio, [FromQuery] DateTime? fim)
         {
@@ -97,29 +94,53 @@ namespace TechDesk.Controllers
                 .Select(f => new { f.Nota, f.Comentario, f.Data })
                 .ToListAsync();
 
-            var resultado = new
+            return Ok(new
             {
                 Periodo = $"{inicio?.ToShortDateString()} - {fim?.ToShortDateString()}",
                 TotalFeedbacks = total,
                 MediaGeral = Math.Round(mediaNota, 2),
                 UltimosComentarios = ultimosComentarios
-            };
-
-            return Ok(resultado);
+            });
         }
 
-        // ==================== EFICIÊNCIA DA IA ====================
-        // GET /relatorios/eficiencia-ia?inicio=2025-01-01&fim=2025-12-31
         [HttpGet("eficiencia-ia")]
         public async Task<IActionResult> EficienciaIA([FromQuery] DateTime? inicio, [FromQuery] DateTime? fim)
         {
-            var eficiencia = await _context.VwTmas.FirstOrDefaultAsync();
-            var resumoStatus = await _context.VwResumoPorStatuses.ToListAsync();
+            var chamados = _context.Chamados.AsQueryable();
 
+            // Aplica filtros de período se informados
+            if (inicio.HasValue)
+                chamados = chamados.Where(c => c.DataInicio >= inicio.Value);
+            if (fim.HasValue)
+                chamados = chamados.Where(c => c.DataFinal == null || c.DataFinal <= fim.Value);
+
+            // Calcula o tempo médio em minutos (somente chamados finalizados)
+            var chamadosFechados = await chamados
+                .Where(c => c.DataFinal != null)
+                .ToListAsync();
+
+            double tempoMedioMin = 0;
+            if (chamadosFechados.Any())
+            {
+                tempoMedioMin = chamadosFechados
+                    .Average(c => (c.DataFinal.Value - c.DataInicio).TotalMinutes);
+            }
+
+            // Quantidade de chamados agrupados por status
+            var resumoStatus = await chamados
+                .GroupBy(c => c.Status)
+                .Select(g => new
+                {
+                    Status = g.Key,
+                    Quantidade = g.Count()
+                })
+                .ToListAsync();
+
+            // Monta resultado final
             var resultado = new
             {
                 Periodo = $"{inicio?.ToShortDateString()} - {fim?.ToShortDateString()}",
-                TempoMedioAtendimentoMin = eficiencia?.TempoMedioMin ?? 0,
+                TempoMedioAtendimentoMin = Math.Round(tempoMedioMin, 2),
                 ChamadosPorStatus = resumoStatus
             };
 

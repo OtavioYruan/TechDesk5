@@ -16,11 +16,12 @@ namespace TechDesk.Controllers
             _context = context;
         }
 
-        // GET /me/notificacoes-preferencias?usuarioId=1
+        // ✅ GET /me/notificacoes-preferencias?usuarioId=1
         [HttpGet("/me/notificacoes-preferencias")]
         public async Task<IActionResult> GetPreferencias([FromQuery] int usuarioId)
         {
             var prefs = await _context.PreferenciasNotificacaos
+                .AsNoTracking()
                 .FirstOrDefaultAsync(p => p.UsuarioId == usuarioId);
 
             if (prefs == null)
@@ -29,11 +30,39 @@ namespace TechDesk.Controllers
             return Ok(prefs);
         }
 
-        // PUT /me/notificacoes-preferencias?usuarioId=1
+        // ✅ POST /me/notificacoes-preferencias
+        [HttpPost("/me/notificacoes-preferencias")]
+        public async Task<IActionResult> CriarPreferencias([FromBody] PreferenciasNotificacaoDTO dto)
+        {
+            if (dto == null)
+                return BadRequest("Dados inválidos.");
+
+            var usuarioExiste = await _context.Usuarios.AnyAsync(u => u.Id == dto.UsuarioId);
+            if (!usuarioExiste)
+                return NotFound("Usuário não encontrado.");
+
+            var jaExiste = await _context.PreferenciasNotificacaos.AnyAsync(p => p.UsuarioId == dto.UsuarioId);
+            if (jaExiste)
+                return Conflict("As preferências desse usuário já existem. Use o PUT para atualizar.");
+
+            var prefs = new PreferenciasNotificacao
+            {
+                UsuarioId = dto.UsuarioId,
+                Email = dto.Email,
+                Push = dto.Push,
+                StatusUpdates = dto.StatusUpdates,
+                AtualizadoEm = DateTime.UtcNow
+            };
+
+            _context.PreferenciasNotificacaos.Add(prefs);
+            await _context.SaveChangesAsync();
+
+            return CreatedAtAction(nameof(GetPreferencias), new { usuarioId = prefs.UsuarioId }, prefs);
+        }
+
+        // ✅ PUT /me/notificacoes-preferencias?usuarioId=1
         [HttpPut("/me/notificacoes-preferencias")]
-        public async Task<IActionResult> AtualizarPreferencias(
-            [FromQuery] int usuarioId,
-            [FromBody] PreferenciasNotificacao novasPrefs)
+        public async Task<IActionResult> AtualizarPreferencias([FromQuery] int usuarioId, [FromBody] PreferenciasNotificacaoDTO dto)
         {
             var prefs = await _context.PreferenciasNotificacaos
                 .FirstOrDefaultAsync(p => p.UsuarioId == usuarioId);
@@ -41,9 +70,9 @@ namespace TechDesk.Controllers
             if (prefs == null)
                 return NotFound("Preferências não encontradas para este usuário.");
 
-            prefs.Email = novasPrefs.Email;
-            prefs.Push = novasPrefs.Push;
-            prefs.StatusUpdates = novasPrefs.StatusUpdates;
+            prefs.Email = dto.Email;
+            prefs.Push = dto.Push;
+            prefs.StatusUpdates = dto.StatusUpdates;
             prefs.AtualizadoEm = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -52,20 +81,6 @@ namespace TechDesk.Controllers
             {
                 mensagem = "Preferências atualizadas com sucesso!",
                 prefs
-            });
-        }
-
-        // POST /notificacoes/testar
-        [HttpPost("/notificacoes/testar")]
-        public IActionResult EnviarNotificacaoTeste([FromBody] string destino)
-        {
-            if (string.IsNullOrWhiteSpace(destino))
-                return BadRequest("Destino não pode ser vazio.");
-
-            return Ok(new
-            {
-                mensagem = $"Notificação de teste enviada para {destino}.",
-                dataEnvio = DateTime.UtcNow
             });
         }
     }

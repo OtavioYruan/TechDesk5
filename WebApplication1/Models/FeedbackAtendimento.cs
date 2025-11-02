@@ -16,16 +16,17 @@ namespace TechDesk.Models
         [ForeignKey("Usuario")]
         public int UsuarioId { get; set; }
 
-        // TINYINT → byte no C#
+        // tinyint no banco → byte no C#
         public byte Nota { get; set; }
 
-        [StringLength(500)]
+        [StringLength(1000)]
         public string? Comentario { get; set; }
 
         public DateTime Data { get; set; }
 
-        // Relacionamentos (nomes iguais ao banco)
+        // 🔹 Nomes de navegação exatamente como o banco e o DbContext esperam:
         public Chamado? IdChamadoNavigation { get; set; }
+
         public Usuario? Usuario { get; set; }
     }
 }
